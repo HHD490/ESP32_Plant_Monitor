@@ -12,7 +12,7 @@ const int sensorPower = 25; // 传感器供电引脚
 const int pumpPin = 2;      // 模拟水泵
 
 // ============== 校准值 ==============
-const int airValue = 3500;
+const int airValue = 4000;
 const int waterValue = 1000;
 
 // ============== 滞后控制逻辑设定 ==============
@@ -26,6 +26,10 @@ bool isWatering = false;
 bool autoMode = true; // 自动模式 (true) / 手动模式 (false)
 int currentHumidity = 0;
 int currentLight = 0;
+
+// ============== 非阻塞计时 ==============
+unsigned long lastSensorRead = 0;
+const unsigned long sensorInterval = 2000; // 传感器读取间隔 (ms)
 
 // ============== Web 服务器 ==============
 WebServer server(80);
@@ -353,60 +357,67 @@ void setup() {
 
 // ============== 主循环 ==============
 void loop() {
-  // 处理 HTTP 请求
+  // 处理 HTTP 请求 (优先响应，无阻塞)
   server.handleClient();
 
-  // --- 读取传感器数据 ---
-  digitalWrite(sensorPower, HIGH);
-  delay(50);
+  // --- 非阻塞传感器读取 ---
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastSensorRead >= sensorInterval) {
+    lastSensorRead = currentMillis;
 
-  int rawSoil = analogRead(sensorPin);
-  int rawLight = analogRead(lightPin);
+    // 读取传感器数据
+    digitalWrite(sensorPower, HIGH);
+    delay(50); // 传感器稳定时间 (较短，可接受)
 
-  digitalWrite(sensorPower, LOW);
+    int rawSoil = analogRead(sensorPin);
+    int rawLight = analogRead(lightPin);
 
-  // --- 数据映射 ---
-  currentHumidity = map(rawSoil, airValue, waterValue, 0, 100);
-  currentHumidity = constrain(currentHumidity, 0, 100);
+    digitalWrite(sensorPower, LOW);
 
-  currentLight = map(rawLight, 2500, 0, 0, 100);
-  currentLight = constrain(currentLight, 0, 100);
+    // 数据映射
+    currentHumidity = map(rawSoil, airValue, waterValue, 0, 100);
+    currentHumidity = constrain(currentHumidity, 0, 100);
 
-  // --- 串口输出 ---
-  Serial.print("湿度: ");
-  Serial.print(currentHumidity);
-  Serial.print("% | ");
-  Serial.print("光照: ");
-  Serial.print(currentLight);
-  Serial.print("% | ");
-  Serial.print("模式: ");
-  Serial.print(autoMode ? "自动" : "手动");
-  Serial.print(" | ");
+    currentLight = map(rawLight, 2500, 0, 0, 100);
+    currentLight = constrain(currentLight, 0, 100);
 
-  // --- 自动控制逻辑 (仅在自动模式下生效) ---
-  if (autoMode) {
-    // 启动逻辑
-    if (!isWatering && currentHumidity < startWatering &&
-        currentLight > lightStartThreshold) {
-      isWatering = true;
-      digitalWrite(pumpPin, HIGH);
-      Serial.print("[自动启动] ");
+    // 串口输出
+    Serial.print("湿度: ");
+    Serial.print(currentHumidity);
+    Serial.print("% | ");
+    Serial.print("光照: ");
+    Serial.print(currentLight);
+    Serial.print("% | ");
+    Serial.print("原始光照: ");
+    Serial.print(rawLight);
+    Serial.print(" | ");
+    Serial.print("模式: ");
+    Serial.print(autoMode ? "自动" : "手动");
+    Serial.print(" | ");
+
+    // 自动控制逻辑 (仅在自动模式下生效)
+    if (autoMode) {
+      // 启动逻辑
+      if (!isWatering && currentHumidity < startWatering &&
+          currentLight > lightStartThreshold) {
+        isWatering = true;
+        digitalWrite(pumpPin, HIGH);
+        Serial.print("[自动启动] ");
+      }
+      // 停止逻辑
+      else if (isWatering && (currentHumidity > stopWatering ||
+                              currentLight < lightStopThreshold)) {
+        isWatering = false;
+        digitalWrite(pumpPin, LOW);
+        Serial.print("[自动停止] ");
+      }
     }
-    // 停止逻辑
-    else if (isWatering && (currentHumidity > stopWatering ||
-                            currentLight < lightStopThreshold)) {
-      isWatering = false;
-      digitalWrite(pumpPin, LOW);
-      Serial.print("[自动停止] ");
+
+    // 状态打印
+    if (isWatering) {
+      Serial.println("状态: 浇水中...💧");
+    } else {
+      Serial.println("状态: 待机中✅");
     }
   }
-
-  // 状态打印
-  if (isWatering) {
-    Serial.println("状态: 浇水中...💧");
-  } else {
-    Serial.println("状态: 待机中✅");
-  }
-
-  delay(2000);
 }
