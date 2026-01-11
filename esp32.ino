@@ -9,17 +9,20 @@ const char *password = "B26110825";
 const int sensorPin = 34;   // 土壤传感器信号
 const int lightPin = 32;    // 光敏传感器信号 (AO)
 const int sensorPower = 25; // 传感器供电引脚
-const int pumpPin = 2;      // 模拟水泵
+const int pumpPin = 2;      // 模拟水泵 LED 指示灯
+const int relayPin = 27;    // 继电器控制引脚 (IN)
+const bool RELAY_ACTIVE_LOW =
+    false; // 低电平触发继电器 (true) / 高电平触发 (false)
 
 // ============== 校准值 ==============
-const int airValue = 4000;
-const int waterValue = 1000;
+const int airValue = 4095;
+const int waterValue = 0;
 
 // ============== 滞后控制逻辑设定 ==============
-const int startWatering = 30;
-const int stopWatering = 40;
-const int lightStartThreshold = 55;
-const int lightStopThreshold = 45;
+const int startWatering = 50;
+const int stopWatering = 70;
+const int lightStartThreshold = 80;
+const int lightStopThreshold = 70;
 
 // ============== 状态变量 ==============
 bool isWatering = false;
@@ -291,6 +294,7 @@ void handleModeManual() {
   // 切换到手动模式时，先关闭水泵
   isWatering = false;
   digitalWrite(pumpPin, LOW);
+  digitalWrite(relayPin, RELAY_ACTIVE_LOW ? HIGH : LOW); // 关闭继电器
   server.send(200, "application/json", "{\"success\":true,\"autoMode\":false}");
   Serial.println(" >> [模式切换] 已切换到手动模式");
 }
@@ -299,6 +303,7 @@ void handlePumpOn() {
   if (!autoMode) { // 只有手动模式下才能控制
     isWatering = true;
     digitalWrite(pumpPin, HIGH);
+    digitalWrite(relayPin, RELAY_ACTIVE_LOW ? LOW : HIGH); // 开启继电器
     server.send(200, "application/json", "{\"success\":true,\"pump\":\"on\"}");
     Serial.println(" >> [手动] 水泵已开启");
   } else {
@@ -311,6 +316,7 @@ void handlePumpOff() {
   if (!autoMode) { // 只有手动模式下才能控制
     isWatering = false;
     digitalWrite(pumpPin, LOW);
+    digitalWrite(relayPin, RELAY_ACTIVE_LOW ? HIGH : LOW); // 关闭继电器
     server.send(200, "application/json", "{\"success\":true,\"pump\":\"off\"}");
     Serial.println(" >> [手动] 水泵已关闭");
   } else {
@@ -324,8 +330,11 @@ void setup() {
   Serial.begin(115200);
   pinMode(sensorPower, OUTPUT);
   pinMode(pumpPin, OUTPUT);
+  pinMode(relayPin, OUTPUT);
   digitalWrite(sensorPower, LOW);
   digitalWrite(pumpPin, LOW);
+  // 继电器初始化为关闭状态
+  digitalWrite(relayPin, RELAY_ACTIVE_LOW ? HIGH : LOW);
 
   // 连接 Wi-Fi
   Serial.println();
@@ -378,7 +387,7 @@ void loop() {
     currentHumidity = map(rawSoil, airValue, waterValue, 0, 100);
     currentHumidity = constrain(currentHumidity, 0, 100);
 
-    currentLight = map(rawLight, 2500, 0, 0, 100);
+    currentLight = map(rawLight, 4095, 0, 0, 100);
     currentLight = constrain(currentLight, 0, 100);
 
     // 串口输出
@@ -402,6 +411,7 @@ void loop() {
           currentLight > lightStartThreshold) {
         isWatering = true;
         digitalWrite(pumpPin, HIGH);
+        digitalWrite(relayPin, RELAY_ACTIVE_LOW ? LOW : HIGH); // 开启继电器
         Serial.print("[自动启动] ");
       }
       // 停止逻辑
@@ -409,6 +419,7 @@ void loop() {
                               currentLight < lightStopThreshold)) {
         isWatering = false;
         digitalWrite(pumpPin, LOW);
+        digitalWrite(relayPin, RELAY_ACTIVE_LOW ? HIGH : LOW); // 关闭继电器
         Serial.print("[自动停止] ");
       }
     }
