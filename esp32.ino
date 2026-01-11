@@ -62,6 +62,7 @@ bool configModeActive = false;
 
 // ============== 计时器 ==============
 BlynkTimer timer;
+int sensorTimerId = -1; // 定时器 ID
 unsigned long lastSensorRead = 0;
 unsigned long sensorInterval = 3600000; // 默认1小时
 
@@ -70,15 +71,25 @@ unsigned long sensorInterval = 3600000; // 默认1小时
 // V3: 采样间隔(小时) | V4: 水泵时长 | V5: 自动/手动模式
 // V6: 采样间隔(分钟)
 
-// 计算总采样间隔 (毫秒)
+// 前向声明
+void periodicTask();
+
+// 计算总采样间隔 (毫秒) 并更新定时器
 void updateSensorInterval() {
   sensorInterval = (unsigned long)samplingIntervalHours * 3600000UL +
                    (unsigned long)samplingIntervalMinutes * 60000UL;
   // 最小间隔 1 分钟
   if (sensorInterval < 60000)
     sensorInterval = 60000;
-  Serial.printf("⚙️ 采样间隔已更新: %d小时 %d分钟\n", samplingIntervalHours,
-                samplingIntervalMinutes);
+
+  // 删除旧定时器，创建新定时器
+  if (sensorTimerId >= 0) {
+    timer.deleteTimer(sensorTimerId);
+  }
+  sensorTimerId = timer.setInterval(sensorInterval, periodicTask);
+
+  Serial.printf("⚙️ 采样间隔已更新: %d小时 %d分钟 (下次采样在 %lu 毫秒后)\n",
+                samplingIntervalHours, samplingIntervalMinutes, sensorInterval);
 }
 
 // ============== 水泵控制 ==============
@@ -407,7 +418,7 @@ void setup() {
   }
 
   // 设置定时任务
-  timer.setInterval(sensorInterval, periodicTask);
+  sensorTimerId = timer.setInterval(sensorInterval, periodicTask);
 
   // 启动时执行一次
   if (!configModeActive) {
