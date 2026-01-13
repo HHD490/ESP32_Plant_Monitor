@@ -7,6 +7,7 @@
  * - 远程控制水泵
  * - 可配置采样间隔和水泵时长
  * - NVS 持久化存储配置
+ * - Modem Sleep 低功耗模式
  */
 
 // ============== Blynk 配置 (必须在最前面) ==============
@@ -20,6 +21,7 @@
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_wifi.h> // Modem Sleep 需要
 
 // ============== 引脚定义 ==============
 const int sensorPin = 34;   // 土壤传感器信号
@@ -404,6 +406,10 @@ void setup() {
       Serial.println("\n✅ WiFi 已连接");
       Serial.print("   IP: ");
       Serial.println(WiFi.localIP());
+
+      // 启用 Modem Sleep 低功耗模式
+      esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+      Serial.println("🔋 Modem Sleep 已启用 (低功耗模式)");
 
       // 连接 Blynk
       Blynk.config(blynkToken);
